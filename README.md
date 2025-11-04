@@ -169,7 +169,7 @@ curl -X POST http://localhost:8000/api/rag/ingest-datapack \
 
 프로젝트 관리자: [유예진]
 이메일: [yyj9290@naver.com]
-프로젝트 링크: https://github.com/[YuYeaJin]/plotlight
+프로젝트 링크: https://github.com/YuYeaJin/PlotLight.git
 
 ## 감사의 말
 
