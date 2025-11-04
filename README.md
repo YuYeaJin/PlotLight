@@ -164,15 +164,12 @@ curl -X POST http://localhost:8000/api/rag/ingest-datapack \
 4. 푸시 (`git push origin feature/amazing-feature`)
 5. Pull Request 생성
 
-## 라이선스
-
-MIT License - 자세한 내용은 [LICENSE](LICENSE) 파일 참조
 
 ## 연락처
 
-프로젝트 관리자: [이름]
-이메일: [이메일]
-프로젝트 링크: https://github.com/[username]/plotlight
+프로젝트 관리자: [유예진]
+이메일: [yyj9290@naver.com]
+프로젝트 링크: https://github.com/[YuYeaJin]/plotlight
 
 ## 감사의 말
 
