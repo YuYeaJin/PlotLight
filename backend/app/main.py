@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
+from .routes import files
+
 from .models.schemas import AnalyzeRunRequest, AnalyzeRunResponse, SectionScore, Metric, EvidenceItem
 
 app = FastAPI(title="PlotLight API", version="0.1.0")
@@ -16,6 +18,9 @@ app.add_middleware(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# 업로드 라우터 등록
+app.include_router(files.router)
 
 @app.post("/analyze/run", response_model=AnalyzeRunResponse)
 def analyze_run(req: AnalyzeRunRequest):

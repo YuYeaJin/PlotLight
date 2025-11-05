@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Literal
 from datetime import datetime
+from pydantic import BaseModel
 
 class EvidenceItem(BaseModel):
     source_id: str
@@ -33,3 +34,12 @@ class AnalyzeRunResponse(BaseModel):
     analyzed_at: datetime = Field(default_factory=datetime.utcnow)
     manuscript_id: str
     title: Optional[str] = None
+
+
+class FileUploadResponse(BaseModel):
+    manuscript_id: str
+    filename: str
+    size_bytes: int
+    saved_as: str
+    saved_dir: str
+    ext: str
