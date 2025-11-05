@@ -1,71 +1,65 @@
+# app/routes/files.py
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from starlette import status
-from typing import Dict
-from pathlib import Path
-import time, re
-
-from . import __init__  # 패키지 인식용 (없으면 무시)
 from ..config import settings
-from ..models.schemas import FileUploadResponse
+from ..models.schemas import AnalyzeRunResponse, SectionScore, Metric, EvidenceItem
+import hashlib
 
 router = APIRouter(prefix="/files", tags=["files"])
 
-CHUNK_SIZE = 1024 * 1024  # 1MB
+def _check_size(n_bytes: int):
+    limit = settings.max_upload_size_mb * 1024 * 1024
+    if n_bytes > limit:
+        raise HTTPException(status_code=413, detail=f"File too large (>{settings.max_upload_size_mb} MB)")
 
-def _secure_filename(name: str) -> str:
-    # 경로 분리 & 위험 문자 제거
-    name = Path(name).name
-    name = re.sub(r'[^A-Za-z0-9._-]+', "_", name)
-    return name
+def _check_ext(filename: str):
+    # 확장자 검사 (없으면 통과)
+    if "." in filename:
+        ext = filename.rsplit(".", 1)[-1].lower().lstrip(".")
+        if settings.allowed_extensions and ext not in settings.allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"Extension .{ext} is not allowed")
 
-@router.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)) -> FileUploadResponse:
-    # 확장자 검증
-    ext = Path(file.filename).suffix.lower().lstrip(".")
-    if ext not in [e.lower().lstrip(".") for e in settings.allowed_extensions]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"허용되지 않은 확장자입니다: .{ext} (allowed: {settings.allowed_extensions})"
-        )
+@router.post("/analyze/quick", response_model=AnalyzeRunResponse, summary="Analyze without saving")
+async def analyze_quick(file: UploadFile = File(...)):
+    # 1) 기본 검증
+    _check_ext(file.filename or "")
+    data = await file.read()  # 디스크에 저장하지 않음 (메모리에서 처리)
+    _check_size(len(data))
 
-    # 저장 경로 준비
-    settings.ensure_dirs()  # 혹시 몰라 재보장
-    safe_name = _secure_filename(file.filename)
-    ts = int(time.time())
-    target_name = f"{ts}_{safe_name}"
-    target_path = settings.manuscript_path / target_name
-
-    # 용량 제한 + 스트리밍 저장
-    max_bytes = settings.max_upload_size_mb * 1024 * 1024
-    written = 0
+    # 2) bytes -> text (MVP: utf-8)
     try:
-        with open(target_path, "wb") as f:
-            while True:
-                chunk = await file.read(CHUNK_SIZE)
-                if not chunk:
-                    break
-                written += len(chunk)
-                if written > max_bytes:
-                    try:
-                        target_path.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"파일이 너무 큽니다. 최대 {settings.max_upload_size_mb}MB"
-                    )
-                f.write(chunk)
-    finally:
-        await file.close()
+        text = data.decode("utf-8", errors="ignore")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to decode file as UTF-8 text")
 
-    # 간단한 아이디(파일명 기반) 반환
-    manuscript_id = target_name.rsplit(".", 1)[0]
-    return {
-        "manuscript_id": manuscript_id,
-        "filename": safe_name,
-        "size_bytes": written,
-        "saved_as": target_name,
-        "saved_dir": str(settings.manuscript_path),
-        "ext": ext,
-    }
+    # 3) 재현용 임시 ID
+    content_hash = hashlib.sha256(data).hexdigest()[:16]
+    manuscript_id = f"mem-{content_hash}"
+
+    # 4) (지금은 목업 응답)
+    genre = SectionScore(
+        label="genre",
+        score=78.0,
+        metrics=[
+            Metric(name="장르 확률-로맨스", value=0.62),
+            Metric(name="장르 확률-판타지", value=0.28),
+        ],
+        evidences=[EvidenceItem(source_id="guide_romance", snippet="초반 갈등 제시", score=0.83)],
+    )
+    style = SectionScore(
+        label="style",
+        score=72.0,
+        metrics=[
+            Metric(name="평균 문장 길이", value=13.4, unit="어절", zscore=0.6),
+            Metric(name="대사 비율", value=41.0, unit="%"),
+            Metric(name="어휘 다양도", value=0.47),
+        ],
+    )
+
+    return AnalyzeRunResponse(
+        manuscript_id=manuscript_id,
+        title=file.filename or "(업로드)",
+        total_score=72.8,
+        strengths=["초반 갈등 명확", "대사 비율이 장르 평균과 근접"],
+        improvements=["3~5화 동기 보강 필요", "조연 말투 차별성 약함"],
+        sections=[genre, style],
+    )
