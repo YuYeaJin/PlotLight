@@ -1,5 +1,5 @@
 :root{
-  /* 색 */
+  /* 기본 색 */
   --bg:#F7F2EA; --card:#EFE7DA; --line:#E3D9C8;
   --ink:#1E1B16; --ink-muted:#5C574F;
   --accent:#174B8A; --accent-soft:#E6EEF8;
@@ -7,8 +7,21 @@
   /* 상태색 */
   --success:#2E7D32; --info:#1565C0; --warn:#B26A00; --error:#C62828;
 
-  /* 라운드/섀도우/간격 */
+  /* 버튼(라이트 기본) */
+  --btn-bg:var(--accent);
+  --btn-fg:#ffffff;
+  --btn-hover:color-mix(in oklab, var(--accent) 85%, black);
+  --btn-ghost-fg:var(--ink);
+  --btn-ghost-border:var(--line);
+  --btn-ghost-hover:color-mix(in oklab, var(--card) 70%, black 30%);
+
+  /* 입력 필드 */
+  --field-bg:#fff;
+  --field-fg:var(--ink);
+  --field-border:var(--line);
+  --field-placeholder:color-mix(in oklab, var(--ink) 45%, transparent);
+
+  /* 모서리/그림자/간격 */
   --radius:16px;
   --shadow:0 6px 24px rgba(0,0,0,.06);
-  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
 }

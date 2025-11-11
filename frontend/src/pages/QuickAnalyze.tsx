@@ -1,4 +1,5 @@
 import { useState } from "react";
+import FileInlinePicker from "../components/FileInlinePicker"
 
 type Metric = { name: string; value: number; unit?: string | null; zscore?: number | null; note?: string | null };
 type EvidenceItem = { source_id: string; snippet: string; score?: number | null; meta?: any };
@@ -57,6 +58,31 @@ export default function QuickAnalyze() {
       </form>
 
       {error && <pre style={{ color: "crimson", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>}
+
+      <section className="card" style={{padding: 16, marginTop: 16}}>
+              <h2 className="section-title">빠른 분석</h2>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          {/* 이 버튼들은 기존 onSubmit과 동일 동작 원하면 type="submit" + form 바인딩 필요.
+              지금은 별도라서 클릭시 onSubmit을 직접 호출하도록 처리 */}
+          <button className="btn btn--primary"
+                  onClick={(e)=>{ e.preventDefault(); if(!file) return; onSubmit(e as any); }}>
+            분석
+          </button>
+          <button className="btn btn--ghost" onClick={(e)=>e.preventDefault()}>
+            미리보기
+          </button>
+        </div>
+
+        {/* ↙︎ 인풋 오른쪽 끝에 ‘파일 선택’ 버튼이 붙음 */}
+        <FileInlinePicker
+          accept=".txt,.md,.pdf,.docx"
+          onPick={(picked) => {
+            setFile(picked);
+            setError(null);
+          }}
+        />
+      </section>
 
       {resp && (
         <div style={{ marginTop: 16 }}>

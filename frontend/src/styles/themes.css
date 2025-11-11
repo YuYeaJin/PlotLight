@@ -1,12 +1,27 @@
-/* 다크 스킨 */
+/* Dark */
 [data-theme="dark"]{
   --bg:#141311; --card:#1B1916; --line:#2A2723;
   --ink:#EFE7DA; --ink-muted:#B8B1A6;
   --accent:#7FB2FF; --accent-soft:#243044;
   --shadow:0 8px 28px rgba(0,0,0,.35);
+
+  /* 버튼(다크 전용) */
+  --btn-bg:var(--accent);
+  --btn-fg:#0D0E10;
+  --btn-hover:color-mix(in oklab, var(--accent) 80%, black);
+
+  --btn-ghost-fg:var(--ink);
+  --btn-ghost-border:#2F2B26;
+  --btn-ghost-hover:#23211E;
+
+  /* 입력 필드 */
+  --field-bg:#151412;
+  --field-fg:var(--ink);
+  --field-border:#2A2723;
+  --field-placeholder:color-mix(in oklab, var(--ink) 55%, transparent);
 }
 
-/* 대체 스킨 예: 세이지 */
+/* Sage(예시) */
 [data-theme="sage"]{
   --bg:#F5F3EF; --card:#ECE8E0; --line:#DED8CC;
   --ink:#171615; --ink-muted:#5A5650;
