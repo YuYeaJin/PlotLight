@@ -1,0 +1,23 @@
+/* normalize/reset 일부 + 기본 바탕/글 색 한 번에 */
+html,body,#root{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif;
+}
+/* 공통 컴포넌트 토큰 활용 */
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+}
+.btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 12px; border-radius:calc(var(--radius) - 6px);
+  font-weight:600;
+}
+.btn--primary{ background:var(--accent); color:#fff; }
+.btn--ghost{ border:1px solid var(--line); background:transparent; }
+.section-title{ font-size:16px; font-weight:700; margin:0 0 var(--space-3); }

@@ -1,0 +1,14 @@
+/* 다크 스킨 */
+[data-theme="dark"]{
+  --bg:#141311; --card:#1B1916; --line:#2A2723;
+  --ink:#EFE7DA; --ink-muted:#B8B1A6;
+  --accent:#7FB2FF; --accent-soft:#243044;
+  --shadow:0 8px 28px rgba(0,0,0,.35);
+}
+
+/* 대체 스킨 예: 세이지 */
+[data-theme="sage"]{
+  --bg:#F5F3EF; --card:#ECE8E0; --line:#DED8CC;
+  --ink:#171615; --ink-muted:#5A5650;
+  --accent:#3E6257; --accent-soft:#E7F3EF;
+}
