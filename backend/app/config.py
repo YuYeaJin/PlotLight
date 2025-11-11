@@ -1,14 +1,51 @@
+# app/config.py
+from __future__ import annotations
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from pathlib import Path
 from typing import List
-import os, json
-from pydantic import field_validator
+import os, json, sys
 
+
+# ---------- Base directories ----------
+def _documents_dir() -> Path:
+    """
+    사용자의 '문서(Documents)' 폴더 경로를 결정한다.
+    - OneDrive가 설정되어 있다면 OneDrive의 Documents 경로를 우선 사용.
+    - 없다면 기본 사용자 홈의 Documents 경로를 사용.
+    - Documents 폴더가 없을 경우 사용자 홈 폴더를 최종 폴백으로 사용.
+    """
+    od = os.getenv("OneDriveConsumer") or os.getenv("OneDriveCommercial")
+    if od:
+        od_docs = Path(od) / "Documents"
+        if od_docs.exists():
+            return od_docs
+    docs = Path.home() / "Documents"
+    return docs if docs.exists() else Path.home()
+
+
+def _app_dir() -> Path:
+    """
+    프로그램(앱) 폴더 경로를 결정한다.
+    - 패키징된 실행(예: PyInstaller)이라면 실행 파일이 있는 폴더를 반환.
+    - 개발/소스 실행이라면 현재 파일 기준 두 단계 상위(보통 backend/)를 반환.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]  # backend/
+
+
+USER_BASE = _documents_dir() / "PlotLight"  # 문서/PlotLight (사용자용 결과만)
+APP_BASE  = _app_dir()                      # 프로그램 폴더 (시스템성 파일)
+
+
+# ---------- Settings ----------
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        extra="ignore",  # 있으면 더 유연, 없어도 필드 다 정의했으면 OK
+        extra="ignore",
     )
 
     # Server
@@ -18,24 +55,27 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
 
-    # Paths (env는 backend 폴더 기준 상대경로 가정)
-    data_dir: str = "../data"
-    manuscript_dir: str = "../data/manuscripts"
-    embedding_dir: str = "../data/embeddings"
-    corpus_dir: str = "../data/corpus"
-    report_dir: str = "../data/reports"
-    log_file: str = "../logs/plotlight.log"  # ★ 추가
+    # 사용자에게 보이는 저장소: 문서/PlotLight/원문, 리포트
+    manuscript_dir: str = "원문"
+    report_dir: str     = "리포트"
 
-    # Security
-    secret_key: str = "change-me"
+    # 시스템성 저장소(문서에 두지 않음) 
+    log_file: str = "logs/plotlight.log"                 # APP_BASE/logs/plotlight.log
+    enable_embeddings: bool = False                      # 기본: 비활성화
+    persist_embeddings: bool = False                     # 기본: 저장 안 함
+    embedding_dir: str = "cache/embeddings"              # APP_BASE 하위
+    corpus_dir: str    = "cache/corpus"                  # APP_BASE 하위
+    chroma_persist_dir: str = "cache/embeddings/chroma"  # APP_BASE 하위"
+
+    # Security / CORS
     cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # Limits
     max_upload_size_mb: int = 10
     allowed_extensions: List[str] = ["txt", "docx", "pdf", "md"]
 
-    # ★ 추가: 벡터/RAG/워커 관련 (에러에 나온 키들 전부)
-    chroma_persist_dir: str = "../data/embeddings/chroma"
+    # RAG/Embedding (자리만 유지)
+    chroma_persist_dir: str = "data/embeddings/chroma"
     embedding_model: str = "BAAI/bge-small-ko-v1.5"
     embedding_dimension: int = 384
     max_embedding_tokens: int = 512
@@ -44,17 +84,17 @@ class Settings(BaseSettings):
     chunk_size: int = 700
     chunk_overlap: int = 70
 
+    # weights/workers
     default_genre_weight: float = 0.15
     default_style_weight: float = 0.25
     default_character_weight: float = 0.25
     default_plausibility_weight: float = 0.20
     default_marketability_weight: float = 0.15
-
     worker_count: int = 2
     max_concurrent_analyses: int = 3
     cache_ttl_seconds: int = 3600
 
-    # ▼ .env가 콤마/JSON/빈값이어도 수용 (선택이지만 권장)
+    # ---------- Validators ----------
     @field_validator("cors_origins", mode="before")
     def _parse_cors(cls, v):
         if isinstance(v, list):
@@ -62,7 +102,7 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             s = v.strip()
             if not s:
-                return None  # -> 기본값 사용
+                return None
             if s == "*":
                 return ["*"]
             if s.startswith("["):
@@ -77,40 +117,58 @@ class Settings(BaseSettings):
         elif isinstance(v, str):
             s = v.strip()
             if not s:
-                return None  # -> 기본값 사용
-            if s.startswith("["):
-                items = json.loads(s)
-            else:
-                items = [x.strip() for x in s.split(",") if x.strip()]
+                return None
+            items = json.loads(s) if s.startswith("[") else [x.strip() for x in s.split(",") if x.strip()]
         else:
             return v
         return [i.lower().lstrip(".") for i in items]
 
-    def as_abs(self, path: str) -> Path:
-        base = Path(__file__).resolve().parents[2]  # backend/
-        return (base / path).resolve()
+    # ---------- Path resolvers ----------
+    def _user_abs(self, p: str) -> Path:
+        """상대경로 → Documents/PlotLight 기준"""
+        q = Path(p);  
+        return q if q.is_absolute() else (USER_BASE / q).resolve()
 
-    @property
-    def data_path(self) -> Path: return self.as_abs(self.data_dir)
-    @property
-    def manuscript_path(self) -> Path: return self.as_abs(self.manuscript_dir)
-    @property
-    def embedding_path(self) -> Path: return self.as_abs(self.embedding_dir)
-    @property
-    def corpus_path(self) -> Path: return self.as_abs(self.corpus_dir)
-    @property
-    def report_path(self) -> Path: return self.as_abs(self.report_dir)
-    @property
-    def chroma_path(self) -> Path: return self.as_abs(self.chroma_persist_dir)   # ★ 추가
-    @property
-    def log_path(self) -> Path: return self.as_abs(self.log_file).parent        # ★ 추가
+    def _app_abs(self, p: str) -> Path:
+        """상대경로 → 프로그램 폴더(APP_DIR) 기준 (로그 등 시스템성 파일)"""
+        q = Path(p);  
+        return q if q.is_absolute() else (APP_BASE / q).resolve()
 
+
+    # 사용자 폴더 (문서/PlotLight/원문, 리포트)
+    @property
+    def manuscript_path(self) -> Path: return self._user_abs(self.manuscript_dir)
+    @property
+    def report_path(self)    -> Path: return self._user_abs(self.report_dir)
+
+    # 시스템/로그/캐시 (프로그램 폴더 쪽)
+    @property
+    def log_abs_file(self)   -> Path: return self._app_abs(self.log_file)
+    @property
+    def log_path(self)       -> Path: return self.log_abs_file.parent
+    @property
+    def embedding_path(self) -> Path: return self._app_abs(self.embedding_dir)
+    @property
+    def corpus_path(self)    -> Path: return self._app_abs(self.corpus_dir)
+    @property
+    def chroma_path(self)    -> Path: return self._app_abs(self.chroma_persist_dir)
+
+
+    # ---------- Ensure dirs ----------
     def ensure_dirs(self) -> None:
-        for p in [
-            self.data_path, self.manuscript_path, self.embedding_path,
-            self.corpus_path, self.report_path, self.chroma_path, self.log_path # ★ 로그/Chroma 폴더 생성
-        ]:
-            p.mkdir(parents=True, exist_ok=True)
+        # ─ 사용자 폴더(문서/PlotLight): 원문/리포트만 생성 ─
+        self.manuscript_path.mkdir(parents=True, exist_ok=True)
+        self.report_path.mkdir(parents=True, exist_ok=True)
+
+        # ─ 시스템/프로그램 폴더(APP_BASE): 로그 및 (옵션) 캐시/임베딩 ─
+        self.log_path.mkdir(parents=True, exist_ok=True)
+        # 임베딩/코퍼스/크로마는 필요할 때만 생성
+        if self.enable_embeddings:
+            self.embedding_path.mkdir(parents=True, exist_ok=True)
+            if self.persist_embeddings:
+                self.corpus_path.mkdir(parents=True, exist_ok=True)
+                self.chroma_path.mkdir(parents=True, exist_ok=True)
+
 
 settings = Settings()
 settings.ensure_dirs()

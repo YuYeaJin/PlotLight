@@ -17,7 +17,12 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "manuscript_path": str(settings.manuscript_path),
+        "report_path": str(settings.report_path),
+        "log_path": str(settings.log_path),
+    }
 
 # 업로드 라우터 등록
 app.include_router(files.router)

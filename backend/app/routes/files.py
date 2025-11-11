@@ -1,10 +1,17 @@
-# app/routes/files.py
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from ..config import settings
 from ..models.schemas import AnalyzeRunResponse, SectionScore, Metric, EvidenceItem
-import hashlib
+from ..services.preprocess import extract_text_from_upload
+from ..services.analysis import rule_based_analyze
+
+import os, json, time, re, unicodedata, hashlib
+from datetime import datetime
+from typing import Tuple
 
 router = APIRouter(prefix="/files", tags=["files"])
+
+# Windows 예약/제어 문자 제거용
+_INVALID = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
 
 def _check_size(n_bytes: int):
     limit = settings.max_upload_size_mb * 1024 * 1024
@@ -13,53 +20,130 @@ def _check_size(n_bytes: int):
 
 def _check_ext(filename: str):
     # 확장자 검사 (없으면 통과)
-    if "." in filename:
+    if filename and "." in filename:
         ext = filename.rsplit(".", 1)[-1].lower().lstrip(".")
         if settings.allowed_extensions and ext not in settings.allowed_extensions:
             raise HTTPException(status_code=400, detail=f"Extension .{ext} is not allowed")
 
-@router.post("/analyze/quick", response_model=AnalyzeRunResponse, summary="Analyze without saving")
-async def analyze_quick(file: UploadFile = File(...)):
+def sanitize_filename(name: str) -> str:
+    # 양끝 공백/점 제거, 제어문자 제거
+    name = unicodedata.normalize("NFC", name).strip().strip(".")
+    name = _INVALID.sub("_", name)
+    # 너무 긴 이름 제한 (NTFS는 255바이트 제한: 여유있게 120자로)
+    return name[:120] or "untitled"
+
+
+def build_storage_name(original: str, content_bytes: bytes) -> Tuple[str, str]:
+    """
+    저장용 파일명과(타임스탬프+원본명) 충돌 방지용 짧은 해시를 반환
+    """
+    if "." in (original or ""):
+        base, ext = original.rsplit(".", 1)
+        ext = ext.lower()
+    else:
+        base, ext = (original or "upload"), "txt"
+    base = sanitize_filename(base)
+    ts = datetime.now().strftime("%y.%m.%d")
+    fname = f"{ts}_{base}.{ext}"
+    short = hashlib.sha1(content_bytes).hexdigest()[:6]
+    return fname, short
+
+@router.post("/analyze/quick", response_model=AnalyzeRunResponse, summary="Analyze with optional persist")
+async def analyze_quick(
+    file: UploadFile = File(...),
+    persist: bool = Form(False),      # 저장 여부 (기본: 미저장)
+    save_report: bool = Form(False),  # 리포트 저장 여부 (persist=True일 때만 의미)
+):
     # 1) 기본 검증
     _check_ext(file.filename or "")
-    data = await file.read()  # 디스크에 저장하지 않음 (메모리에서 처리)
-    _check_size(len(data))
+    contents = await file.read()  # 디스크에 저장하지 않음(옵션)
+    _check_size(len(contents))
 
-    # 2) bytes -> text (MVP: utf-8)
+    started = time.perf_counter()
+
+    # 2) 텍스트 추출 (메모리에서)
     try:
-        text = data.decode("utf-8", errors="ignore")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to decode file as UTF-8 text")
+        text = await extract_text_from_upload(filename=file.filename or "", data=contents)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"텍스트 추출 실패: {e}")
 
-    # 3) 재현용 임시 ID
-    content_hash = hashlib.sha256(data).hexdigest()[:16]
-    manuscript_id = f"mem-{content_hash}"
+    # 3) 규칙 기반 분석
+    result = rule_based_analyze(text)
 
-    # 4) (지금은 목업 응답)
+    # 4) 필요 시만 저장
+    manuscript_id = None
+    stored_filename = None
+    if persist:
+        os.makedirs(settings.manuscript_path, exist_ok=True)
+
+        fname, short = build_storage_name(file.filename or "upload", contents)
+        fullpath = os.path.join(settings.manuscript_path, fname)
+
+        # 파일명이 이미 존재하면 짧은 해시 꼬리표 추가
+        if os.path.exists(fullpath):
+            if "." in fname:
+                stem, ext = fname.rsplit(".", 1)
+                fname = f"{stem}_{short}.{ext}"
+            else:
+                fname = f"{fname}_{short}"
+            fullpath = os.path.join(settings.manuscript_path, fname)
+
+        with open(fullpath, "wb") as f:
+            f.write(contents)
+
+        stored_filename = fname
+        # 사람이 보기 좋게: 내용 해시 + 타임스탬프
+        content_hash = hashlib.sha1(contents).hexdigest()[:10]
+        manuscript_id = f"{content_hash}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        if save_report:
+            os.makedirs(settings.report_path, exist_ok=True)
+            report_json = {
+                "manuscript_id": manuscript_id,
+                "original_filename": file.filename,
+                "stored_filename": stored_filename,
+                "analyzed_at": datetime.now().isoformat(),
+                "result": result,
+            }
+            with open(
+                os.path.join(settings.report_path, f"{manuscript_id}.json"),
+                "w", encoding="utf-8"
+            ) as jf:
+                json.dump(report_json, jf, ensure_ascii=False, indent=2)
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+
+    # 5) 스키마에 맞게 응답 구성
     genre = SectionScore(
         label="genre",
-        score=78.0,
+        score=result["scores"]["genre"],
         metrics=[
-            Metric(name="장르 확률-로맨스", value=0.62),
-            Metric(name="장르 확률-판타지", value=0.28),
+            Metric(name="문장 수", value=result["stats"]["num_sentences"]),
+            Metric(name="대사 비율", value=result["stats"]["quote_ratio"]),
         ],
-        evidences=[EvidenceItem(source_id="guide_romance", snippet="초반 갈등 제시", score=0.83)],
+        evidences=[EvidenceItem(source_id="rule", snippet="규칙 기반 통계 산출", score=1.0)],
     )
     style = SectionScore(
         label="style",
-        score=72.0,
+        score=result["scores"]["style"],
         metrics=[
-            Metric(name="평균 문장 길이", value=13.4, unit="어절", zscore=0.6),
-            Metric(name="대사 비율", value=41.0, unit="%"),
-            Metric(name="어휘 다양도", value=0.47),
+            Metric(name="평균 문장 길이", value=result["stats"]["avg_sentence_len"]),
+            Metric(name="문단 수", value=result["stats"]["num_paragraphs"]),
         ],
+        evidences=[EvidenceItem(source_id="rule", snippet="규칙 기반 통계 산출", score=1.0)],
     )
 
     return AnalyzeRunResponse(
-        manuscript_id=manuscript_id,
-        title=file.filename or "(업로드)",
-        total_score=72.8,
-        strengths=["초반 갈등 명확", "대사 비율이 장르 평균과 근접"],
-        improvements=["3~5화 동기 보강 필요", "조연 말투 차별성 약함"],
+        total_score=result["scores"]["total"],
+        strengths=result["strengths"],
+        improvements=result["improvements"],
         sections=[genre, style],
+        manuscript_id=manuscript_id,             # persist=False면 None
+        # ↓ 아래 3개 필드는 스키마에 없다면 빼세요.
+        analyzed_at=datetime.now().isoformat(),
+        processing_ms=elapsed_ms,
+        persisted=persist,
+        # 선택: 스키마에 title 있으면 채우기
+        title=(file.filename or "(업로드)"),
     )
