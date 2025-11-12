@@ -79,7 +79,7 @@ body{
   border-radius:10px; background:var(--field-bg); color:var(--field-fg);
   border:1px solid var(--field-border);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  user-select:none; cursor:pointer;            /* ← 타이핑 불가 + 클릭 유도 */
+  user-select:none; cursor:pointer;
 }
 .field__display--placeholder{ color: var(--field-placeholder); }
 .field__action{

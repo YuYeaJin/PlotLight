@@ -1,5 +1,6 @@
+// src/pages/QuickAnalyze.tsx
 import { useState } from "react";
-import FileInlinePicker from "../components/FileInlinePicker"
+import FileInlinePicker from "../components/FileInlinePicker";
 
 type Metric = { name: string; value: number; unit?: string | null; zscore?: number | null; note?: string | null };
 type EvidenceItem = { source_id: string; snippet: string; score?: number | null; meta?: any };
@@ -20,7 +21,7 @@ const API = import.meta.env.VITE_API_BASE as string;
 
 export default function QuickAnalyze() {
   const [file, setFile] = useState<File | null>(null);
-  const [persist, setPersist] = useState(true);      // 기본 저장 ON (원문 폴더 확인용)
+  const [persist, setPersist] = useState(true);
   const [saveReport, setSaveReport] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState<AnalyzeRunResponse | null>(null);
@@ -48,41 +49,36 @@ export default function QuickAnalyze() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 860, margin: "0 auto", lineHeight: 1.5 }}>
-      <h1 style={{ marginBottom: 8 }}>PlotLight — 빠른 분석</h1>
-      <form onSubmit={onSubmit} style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <input type="file" accept=".txt,.md,.pdf,.docx" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-        <label><input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} /> 원문 저장</label>
-        <label><input type="checkbox" checked={saveReport} onChange={e => setSaveReport(e.target.checked)} /> 리포트 저장(JSON)</label>
-        <button type="submit" disabled={loading || !file}>{loading ? "분석 중…" : "분석"}</button>
-      </form>
+    <main style={{ maxWidth: 960, margin: "20px auto", padding: "0 16px" }}>
+      <section className="card" style={{ padding: 16 }}>
+        <h2 className="section-title">원문 분석</h2>
+
+        <form onSubmit={onSubmit}>
+          {/* 체크박스 줄 */}
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <label><input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} /> 원문 저장</label>
+            <label><input type="checkbox" checked={saveReport} onChange={e => setSaveReport(e.target.checked)} /> 리포트 저장</label>
+            <button type="submit" className="btn btn--primary" disabled={loading || !file}>
+              {loading ? "분석 중…" : "분석"}
+            </button>
+          </div>
+
+          {/* 파일 설명 + 파일 선택 (오버플로 방지 스타일) */}
+          <div
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <FileInlinePicker
+              accept=".txt,.md,.pdf,.docx"
+              onPick={(picked) => { setFile(picked); setError(null); }}
+            />
+          </div>
+        </form>
+      </section>
 
       {error && <pre style={{ color: "crimson", marginTop: 12, whiteSpace: "pre-wrap" }}>{error}</pre>}
-
-      <section className="card" style={{padding: 16, marginTop: 16}}>
-              <h2 className="section-title">빠른 분석</h2>
-
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          {/* 이 버튼들은 기존 onSubmit과 동일 동작 원하면 type="submit" + form 바인딩 필요.
-              지금은 별도라서 클릭시 onSubmit을 직접 호출하도록 처리 */}
-          <button className="btn btn--primary"
-                  onClick={(e)=>{ e.preventDefault(); if(!file) return; onSubmit(e as any); }}>
-            분석
-          </button>
-          <button className="btn btn--ghost" onClick={(e)=>e.preventDefault()}>
-            미리보기
-          </button>
-        </div>
-
-        {/* ↙︎ 인풋 오른쪽 끝에 ‘파일 선택’ 버튼이 붙음 */}
-        <FileInlinePicker
-          accept=".txt,.md,.pdf,.docx"
-          onPick={(picked) => {
-            setFile(picked);
-            setError(null);
-          }}
-        />
-      </section>
 
       {resp && (
         <div style={{ marginTop: 16 }}>
@@ -109,6 +105,6 @@ export default function QuickAnalyze() {
           ))}
         </div>
       )}
-    </div>
+    </main>
   );
 }
