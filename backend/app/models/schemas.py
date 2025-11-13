@@ -32,8 +32,9 @@ class AnalyzeRunResponse(BaseModel):
     improvements: List[str]
     sections: List[SectionScore]
     analyzed_at: datetime = Field(default_factory=datetime.utcnow)
-    manuscript_id: str
+    manuscript_id: Optional[str] = None
     title: Optional[str] = None
+    processing_ms: Optional[int] = None
 
 
 class FileUploadResponse(BaseModel):
