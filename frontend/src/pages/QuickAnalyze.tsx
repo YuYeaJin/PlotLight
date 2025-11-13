@@ -17,12 +17,22 @@ type AnalyzeRunResponse = {
   persisted?: boolean;
 };
 
+type QuickAnalyzeProps = {
+  defaultPersist?: boolean;
+  defaultSaveReport?: boolean;
+};
+
+
 const API = import.meta.env.VITE_API_BASE as string;
 
-export default function QuickAnalyze() {
+export default function QuickAnalyze({
+  defaultPersist = true,
+  defaultSaveReport = false,
+}: QuickAnalyzeProps) {
+
   const [file, setFile] = useState<File | null>(null);
-  const [persist, setPersist] = useState(true);
-  const [saveReport, setSaveReport] = useState(false);
+  const [persist, setPersist] = useState(defaultPersist);
+  const [saveReport, setSaveReport] = useState(defaultSaveReport);
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState<AnalyzeRunResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +66,6 @@ export default function QuickAnalyze() {
         <form onSubmit={onSubmit}>
           {/* 체크박스 줄 */}
           <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-            <label><input type="checkbox" checked={persist} onChange={e => setPersist(e.target.checked)} /> 원문 저장</label>
-            <label><input type="checkbox" checked={saveReport} onChange={e => setSaveReport(e.target.checked)} /> 리포트 저장</label>
             <button type="submit" className="btn btn--primary" disabled={loading || !file}>
               {loading ? "분석 중…" : "분석"}
             </button>
