@@ -74,7 +74,7 @@ async def analyze_quick(
     # 4) 원문/리포트 저장 준비
     stored_filename: str | None = None
 
-    # 내용 해시 + 타임스탬프로 사람이 보기 좋은 ID 하나는 항상 만들어 둡니다.
+    # 내용 해시 + 타임스탬프로 사람이 보기 좋은 ID 하나는 항상 만들어 둔다
     content_hash = hashlib.sha1(contents).hexdigest()[:10]
     manuscript_id = f"{content_hash}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
@@ -100,23 +100,6 @@ async def analyze_quick(
 
         stored_filename = fname
 
-    # 4-2) 리포트 JSON 저장 (save_report가 true면, persist 여부와 상관 없이)
-    if save_report:
-        os.makedirs(settings.report_path, exist_ok=True)
-        report_json = {
-            "manuscript_id": manuscript_id,
-            "original_filename": file.filename,
-            "stored_filename": stored_filename,
-            "analyzed_at": datetime.now().isoformat(),
-            "result": result,
-        }
-        with open(
-            os.path.join(settings.report_path, f"{manuscript_id}.json"),
-            "w",
-            encoding="utf-8",
-        ) as jf:
-            json.dump(report_json, jf, ensure_ascii=False, indent=2)
-
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     # 5) 응답용 섹션 구성 (하드코딩/규칙 기반)
@@ -125,10 +108,13 @@ async def analyze_quick(
         score=result["scores"]["genre"],
         metrics=[
             Metric(name="문장 수", value=result["stats"]["num_sentences"]),
-            Metric(name="대사 비율", value=result["stats"]["quote_ratio"]),
+            # Metric(name="추정 장르", value=None, note=result.get("genre_label")),
         ],
-        evidences=[EvidenceItem(source_id="rule", snippet="규칙 기반 통계 산출", score=1.0)],
+        evidences=[
+            EvidenceItem(source_id="rule", snippet="키워드 기반 장르 추정", score=0.7)
+        ],
     )
+
     style = SectionScore(
         label="style",
         score=result["scores"]["style"],
@@ -136,19 +122,81 @@ async def analyze_quick(
             Metric(name="평균 문장 길이", value=result["stats"]["avg_sentence_len"]),
             Metric(name="문단 수", value=result["stats"]["num_paragraphs"]),
         ],
-        evidences=[EvidenceItem(source_id="rule", snippet="규칙 기반 통계 산출", score=1.0)],
+        evidences=[
+            EvidenceItem(
+                source_id="rule",
+                snippet="문장 길이/문단 수 기반 스타일 점수",
+                score=0.8,
+            )
+        ],
     )
 
-    return AnalyzeRunResponse(
+    character = SectionScore(
+        label="character",
+        score=result["scores"]["character"],
+        metrics=[
+            Metric(name="대사 비율", value=result["stats"]["quote_ratio"]),
+        ],
+        evidences=[
+            EvidenceItem(
+                source_id="rule",
+                snippet="대사 비율을 캐릭터성에 반영",
+                score=0.6,
+            )
+        ],
+    )
+
+    market = SectionScore(
+        label="market",
+        score=result["scores"]["marketability"],
+        metrics=[],
+        evidences=[
+            EvidenceItem(
+                source_id="rule",
+                snippet="AI 연동 전 임시 시장성 점수",
+                score=0.3,
+            )
+        ],
+    )
+
+    plaus = SectionScore(
+        label="causality",
+        score=result["scores"]["plausibility"],
+        metrics=[],
+        evidences=[
+            EvidenceItem(
+                source_id="rule",
+                snippet="AI 연동 전 임시 개연성 점수",
+                score=0.3,
+            )
+        ],
+    )
+
+    # 6) 응답 객체 생성
+    resp = AnalyzeRunResponse(
         total_score=result["scores"]["total"],
         strengths=result["strengths"],
         improvements=result["improvements"],
-        sections=[genre, style],
+        sections=[genre, style, character, market, plaus],
         manuscript_id=manuscript_id,
         analyzed_at=datetime.now(),
         processing_ms=elapsed_ms,
         title=(file.filename or "(업로드)"),
     )
+
+    # 7) 리포트 JSON 저장 (save_report가 true면, persist 여부와 상관 없이)
+    if save_report:
+        os.makedirs(settings.report_path, exist_ok=True)
+        report_data = resp.model_dump()
+        with open(
+            os.path.join(settings.report_path, f"{manuscript_id}.json"),
+            "w",
+            encoding="utf-8",
+        ) as jf:
+            json.dump(report_data, jf, ensure_ascii=False, indent=2)
+
+    # 8) 클라이언트로 응답 반환
+    return resp
 
 # @router.post("/analyze/quick", response_model=AnalyzeRunResponse, summary="Analyze with optional persist")
 # async def analyze_quick(
